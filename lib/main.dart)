@@ -1,0 +1,124 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+
+void main() => runApp(const MyApp());
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Download Loop',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const HomePage(),
+    );
+  }
+}
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final Dio _dio = Dio();
+  bool _running = false;
+  int _count = 0;
+  double _progress = 0;
+  String _status = 'অপেক্ষায় আছে';
+
+  // 👇 এখানে তোমার 100MB ফাইলের URL বসাও
+  final String fileUrl =
+      'https://speed.cloudflare.com/__down?bytes=104857600';
+
+  Future<void> _startLoop() async {
+    setState(() => _running = true);
+    while (_running) {
+      _count++;
+      setState(() {
+        _status = 'Download #$_count চলছে...';
+        _progress = 0;
+      });
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final path = '${dir.path}/temp_file.dat';
+
+        await _dio.download(
+          fileUrl,
+          path,
+          deleteOnError: true,
+          onReceiveProgress: (rec, total) {
+            if (total > 0 && mounted) {
+              setState(() => _progress = rec / total);
+            }
+          },
+        );
+
+        final file = File(path);
+        if (await file.exists()) {
+          final mb = (await file.length()) / (1024 * 1024);
+          await file.delete();
+          setState(() {
+            _status =
+                '✅ #$_count সম্পন্ন (${mb.toStringAsFixed(1)} MB) → ডিলিট হয়েছে';
+          });
+        }
+        await Future.delayed(const Duration(seconds: 2));
+      } catch (e) {
+        setState(() => _status = '❌ Error: $e');
+        await Future.delayed(const Duration(seconds: 5));
+      }
+    }
+  }
+
+  void _stopLoop() {
+    setState(() {
+      _running = false;
+      _status = '⏹️ বন্ধ করা হয়েছে';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Download Loop App')),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('মোট download: $_count',
+                style: const TextStyle(fontSize: 22)),
+            const SizedBox(height: 20),
+            LinearProgressIndicator(value: _progress, minHeight: 12),
+            const SizedBox(height: 20),
+            Text(_status,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              onPressed: _running ? null : _startLoop,
+              style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 55),
+                  backgroundColor: Colors.green),
+              child: const Text('▶️ শুরু করো',
+                  style: TextStyle(fontSize: 18, color: Colors.white)),
+            ),
+            const SizedBox(height: 15),
+            ElevatedButton(
+              onPressed: _running ? _stopLoop : null,
+              style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 55),
+                  backgroundColor: Colors.red),
+              child: const Text('⏹️ বন্ধ করো',
+                  style: TextStyle(fontSize: 18, color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
